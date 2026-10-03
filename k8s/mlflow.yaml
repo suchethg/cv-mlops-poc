@@ -1,16 +1,17 @@
 # MLflow tracking server + model registry.
 # Metadata (runs, params, metrics, registry) -> SQLite on a persistent volume.
-# Artifacts (models, plots) -> MinIO bucket "mlflow-artifacts", proxied by the server,
-# so training pods never need storage credentials.
+# Artifacts (models, plots) -> the DATA LAKE's "mlflow-artifacts" bucket,
+# proxied by the server, so training pods never need storage credentials.
 #
 # Notes:
-# - The PersistentVolumeClaim keeps the MLflow database across pod restarts.
-# - The init container makes sure the artifact bucket exists before MLflow starts
-#   (the dev-stack MinIO loses buckets on restart until step 3 fixes that).
+# - Artifacts moved from the dev stack's MinIO (wiped on restart) to the
+#   persistent data lake in step 5. Models must survive restarts.
+# - MLflow only needs the data lake credentials; they come from the
+#   "datalake-creds" secret and are mapped to the AWS_* names boto3 expects.
 # - --allowed-hosts: MLflow rejects requests addressed to unknown hostnames
-#   (DNS-rebinding protection). We allow the in-cluster service name and
-#   localhost port-forwards.
-# - strategy Recreate: never run two servers on the same SQLite file.
+#   (DNS-rebinding protection). We allow the in-cluster name and localhost.
+# - MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false: unused background job workers
+#   otherwise push memory past the limit (see docs/known-issues.md).
 
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -41,29 +42,36 @@ spec:
         app: mlflow
     spec:
       initContainers:
-        - name: create-artifact-bucket
+        - name: check-artifact-bucket
           image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
           imagePullPolicy: IfNotPresent
           envFrom:
             - secretRef:
-                name: minio-secret
+                name: datalake-creds
           command: ["/bin/sh", "-c"]
           args:
             - >-
-              mc alias set local "$AWS_ENDPOINT_URL_S3" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" &&
-              mc mb --ignore-existing local/mlflow-artifacts
+              mc alias set lake "$LAKE_ENDPOINT" "$LAKE_ACCESS_KEY" "$LAKE_SECRET_KEY" &&
+              mc mb --ignore-existing lake/mlflow-artifacts
       containers:
         - name: mlflow
           image: mlflow-server:3.16.1
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5000
-          envFrom:
-            - secretRef:
-                name: minio-secret
           env:
             - name: MLFLOW_S3_ENDPOINT_URL
-              value: http://minio.default.svc.cluster.local:9000
+              value: http://datalake.default.svc.cluster.local:9000
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: datalake-creds
+                  key: LAKE_ACCESS_KEY
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datalake-creds
+                  key: LAKE_SECRET_KEY
             - name: AWS_DEFAULT_REGION
               value: us-east-1
             - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
