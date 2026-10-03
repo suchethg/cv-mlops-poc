@@ -47,6 +47,9 @@ def main():
     if tags.get("approval.status") in ("approved", "rejected"):
         sys.exit(f"REFUSED: version {args.version} was already {tags['approval.status']} "
                  f"by {tags.get('approval.by')}")
+    if not tags.get("edge_model.sha256"):
+        sys.exit(f"REFUSED: version {args.version} has no recorded model checksum "
+                 "(gated before checksums were required); re-run the release gate")
     trainer = tags.get("trained_by", "unknown")
     if args.approver.strip().lower() == trainer.strip().lower():
         sys.exit(f"REFUSED: {args.approver} trained this model. Approval requires a "
@@ -60,6 +63,7 @@ def main():
         "trained_by": trainer, "source_run_id": tags.get("source.run_id"),
         "dataset_id": tags.get("dataset.id"), "code_git_commit": tags.get("code.git_commit"),
         "gate_run_id": tags.get("gate.run_id"), "gate_policy": tags.get("gate.policy"),
+        "edge_model_sha256": tags.get("edge_model.sha256"),
     }
 
     # Audit record first: if this write fails, the registry is left unchanged.

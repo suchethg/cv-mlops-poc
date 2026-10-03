@@ -16,7 +16,8 @@ Run (Mac, tunnels open, credentials loaded):
   python flows/release_gate_flow.py run --training-run <mlflow training run id>
 """
 import os
-
+import glob
+import hashlib
 from metaflow import FlowSpec, Parameter, current, environment, kubernetes, step
 
 GATE_IMAGE = "surgseg-gate:0.1"
@@ -117,8 +118,10 @@ class ReleaseGateFlow(FlowSpec):
             if self.latency:
                 mlflow.log_metrics({f"latency_{k}_ms": v for k, v in self.latency.items()})
             if self.decision == "passed":
+                # One self-contained file, so its checksum covers every weight.
                 info = mlflow.onnx.log_model(onnx.load(onnx_path), name="edge_model",
-                                             registered_model_name=name)
+                                             registered_model_name=name,
+                                             save_as_external_data=False)
                 self.model_version = str(info.registered_model_version)
                 client = mlflow.MlflowClient()
                 version_tags = {
@@ -136,6 +139,13 @@ class ReleaseGateFlow(FlowSpec):
                 }
                 for k, v in version_tags.items():
                     client.set_model_version_tag(name, self.model_version, k, str(v))
+                # Checksum of the exact file edge devices will download. Edge
+                # servers refuse to run a model whose file doesn't match it.
+                local = mlflow.artifacts.download_artifacts(f"models:/{name}/{self.model_version}")
+                onnx_file = glob.glob(os.path.join(local, "**", "*.onnx"), recursive=True)[0]
+                self.edge_sha256 = hashlib.sha256(open(onnx_file, "rb").read()).hexdigest()
+                client.set_model_version_tag(name, self.model_version,
+                                             "edge_model.sha256", self.edge_sha256)
                 client.update_model_version(name, self.model_version,
                                             description=POLICY["intended_use"])
                 client.set_registered_model_alias(name, "candidate", self.model_version)
