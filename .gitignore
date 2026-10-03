@@ -21,3 +21,4 @@ mlruns/
 .idea/
 .vscode/
 .env.local
+out/
