@@ -78,7 +78,7 @@ def list_videos():
 
 
 def upload_clip(s3, video: str, clip_dir: Path, inject: str):
-    rng = random.Random(clip_dir.name)  # same clip -> same fake patient
+    rng = random.Random(video)  # same clip -> same fake patient
     site = rng.choice(SITES)
     device_id = f"dvc-{rng.randint(1000, 9999)}"
     patient_name = rng.choice(FAKE_NAMES)

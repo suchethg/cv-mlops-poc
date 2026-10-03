@@ -18,3 +18,12 @@
 - Bad rollout: set boston to v1 (no checksum) -> new pod REFUSING TO SERVE,
   CrashLoopBackOff; old pod kept serving v2; site never went down
 - Rollback: kubectl apply -f k8s/edge-sites.yaml -> only boston changed, back to v2
+
+   ## Audit (step 8)
+   python scripts/audit.py --site boston -> CHAIN INTACT, 1 warning
+   - device file checksum == registry == approval record
+   - dataset ID recomputed from 5,560 file hashes matches ds-e66b802f5ece3cda
+   - training code 16253c81 is published on GitHub
+   - 35 clips -> 35 accepted device uploads across 3 sites
+   - WARN: 17/17 cases map to >1 patient pseudonym (simulator bug, found by audit)
+   python scripts/audit.py --version 1 -> BROKEN: no model checksum in approval record
