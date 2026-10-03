@@ -1,0 +1,22 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Metaflow local state
+.metaflow/
+devtools/
+
+# Data and models: never commit (dataset license, size, compliance)
+data/
+*.zip
+*.pt
+*.pth
+*.onnx
+mlruns/
+
+# macOS / editors
+.DS_Store
+.idea/
+.vscode/
