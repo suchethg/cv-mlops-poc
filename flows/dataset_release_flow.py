@@ -11,11 +11,12 @@
 Run (Mac, tunnels open, credentials loaded):
   python flows/dataset_release_flow.py run --max-workers 4
 """
-from metaflow import FlowSpec, Parameter, current, kubernetes, step
+from metaflow import FlowSpec, Parameter, current, kubernetes, schedule, step
 
 RUNTIME_IMAGE = "surgseg-runtime:0.2"
 
-
+# When deployed to Argo Workflows: monthly, 02:00 UTC on the 1st.
+@schedule(cron="0 2 1 * *")
 class DatasetReleaseFlow(FlowSpec):
 
     # Not called "name": FlowSpec already uses self.name for the flow's own name.

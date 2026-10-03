@@ -11,8 +11,8 @@ Run (Mac, tunnels open, credentials loaded):
   python flows/train_flow.py run --epochs 1 --max-train-frames 400   # quick test
 """
 import subprocess
-
-from metaflow import FlowSpec, Parameter, current, environment, kubernetes, step
+import os
+from metaflow import FlowSpec, Parameter, current, environment, kubernetes, schedule, step
 
 TRAIN_IMAGE = "surgseg-train:0.1"
 IN_CLUSTER_MLFLOW = "http://mlflow.default.svc.cluster.local:5000"
@@ -25,7 +25,9 @@ def git(*args):
     except Exception:
         return "unknown"
 
-
+# When deployed to Argo Workflows: monthly, 03:00 UTC on the 1st (after the
+# dataset release), training on the latest dataset release.
+@schedule(cron="0 3 1 * *")
 class TrainFlow(FlowSpec):
 
     dataset_name = Parameter("dataset", default="cholecseg")
@@ -37,6 +39,10 @@ class TrainFlow(FlowSpec):
     img_width = Parameter("img-width", default=288)
     max_train_frames = Parameter("max-train-frames", default=0, help="0 = all")
     seed = Parameter("seed", default=0)
+        # Set by scripts/deploy_schedules.sh from a clean, pushed commit. Pods on
+    # Argo have no git checkout, so this is how scheduled runs know their code.
+    deployed_commit = Parameter("deployed-commit",
+                                default=os.environ.get("DEPLOY_GIT_COMMIT", ""))
 
     @step
     def start(self):
@@ -48,6 +54,10 @@ class TrainFlow(FlowSpec):
         self.resolved_dataset_id = manifest["dataset_id"]
         self.git_commit = git("rev-parse", "HEAD")
         self.git_dirty = git("status", "--porcelain", "--untracked-files=no") != ""
+        if self.git_commit == "unknown" and self.deployed_commit:
+            # Scheduled run on Argo: the deploy script only deploys a clean,
+            # pushed commit and records it here.
+            self.git_commit, self.git_dirty = self.deployed_commit, False
         print(f"dataset {self.dataset_name}/{self.resolved_dataset_id}")
         print(f"code    {self.git_commit}{' (UNCOMMITTED CHANGES)' if self.git_dirty else ''}")
         if self.git_dirty:

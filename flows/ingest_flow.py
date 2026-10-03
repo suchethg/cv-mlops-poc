@@ -9,12 +9,13 @@ Finishes with an ingest report saved to the data lake.
 Run (Mac, tunnels open, credentials loaded):
   python flows/ingest_flow.py run --max-workers 4
 """
-from metaflow import FlowSpec, current, kubernetes, step
+from metaflow import FlowSpec, current, kubernetes, schedule, step
 
 RUNTIME_IMAGE = "surgseg-runtime:0.2"
 NOTHING_TO_DO = "__none__"
 
-
+# When deployed to Argo Workflows: check quarantine for new uploads every hour.
+@schedule(cron="0 * * * *")
 class IngestFlow(FlowSpec):
 
     @step
