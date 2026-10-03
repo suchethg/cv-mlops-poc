@@ -50,3 +50,10 @@ memory limit, the pod was repeatedly OOMKilled.
 **Production lesson:** Set resource limits from measured usage, and explicitly
 disable server features you don't use. It saves memory and shrinks the attack
 surface.
+
+## Proof: dataset files can't be deleted
+
+Command: attempt to delete a specific version of a file in datasets/blobs/
+Result: "Object is WORM protected and cannot be overwritten"
+Meaning: the exact bytes a model was trained on can't be altered or removed
+during retention, even by the data lake admin.
