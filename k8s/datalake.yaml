@@ -1,0 +1,91 @@
+# Data lake: a dedicated MinIO with PERSISTENT storage.
+#
+# Why a second MinIO? The dev stack's MinIO (Metaflow's scratch datastore) keeps
+# data on a temporary volume and loses it on restart. Raw uploads, curated data,
+# frozen dataset versions and model files must survive restarts, so they live here.
+#
+# Credentials come from the "datalake-creds" secret, deliberately separate from
+# Metaflow's "minio-secret": each system gets its own credentials.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: datalake-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 15Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datalake
+  labels:
+    app: datalake
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: datalake
+  template:
+    metadata:
+      labels:
+        app: datalake
+    spec:
+      containers:
+        - name: minio
+          image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+          imagePullPolicy: IfNotPresent
+          command: ["minio"]
+          args: ["server", "/data", "--console-address", ":9001"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: datalake-creds
+                  key: LAKE_ACCESS_KEY
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: datalake-creds
+                  key: LAKE_SECRET_KEY
+          ports:
+            - containerPort: 9000
+            - containerPort: 9001
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: datalake-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: datalake
+spec:
+  selector:
+    app: datalake
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+    - name: console
+      port: 9001
+      targetPort: 9001

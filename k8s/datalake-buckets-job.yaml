@@ -1,0 +1,43 @@
+# One-off job that creates the data lake buckets. Safe to rerun.
+#
+#   quarantine        raw device uploads, untrusted until checked
+#   curated           files that passed checks and de-identification
+#   rejected          files that failed checks, kept with a reason for audit
+#   mlflow-artifacts  model files and run outputs
+#   datasets          frozen dataset versions and manifests, OBJECT LOCK ON:
+#                     objects can't be overwritten or deleted during retention
+#
+# Every bucket has versioning on, so overwrites keep the old version.
+#
+# Retention uses GOVERNANCE mode (an admin can override, so you can clean up
+# your laptop). Production would use COMPLIANCE mode: nobody can delete early.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: datalake-buckets
+spec:
+  backoffLimit: 6
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: datalake-creds
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              mc alias set lake "$LAKE_ENDPOINT" "$LAKE_ACCESS_KEY" "$LAKE_SECRET_KEY"
+              for b in quarantine curated rejected mlflow-artifacts; do
+                mc mb --ignore-existing "lake/$b"
+                mc version enable "lake/$b"
+              done
+              mc mb --ignore-existing --with-lock lake/datasets
+              mc retention set --default GOVERNANCE 30d lake/datasets
+              echo "Buckets:"
+              mc ls lake
