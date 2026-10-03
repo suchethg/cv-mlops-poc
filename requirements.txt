@@ -4,3 +4,4 @@ metaflow>=2.19
 boto3>=1.34
 # Experiment tracking and model registry client
 mlflow>=3.0
+pillow>=10.0
