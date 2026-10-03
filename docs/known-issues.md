@@ -36,3 +36,17 @@ models are stored. Object storage on a temporary disk is not storage.
 
     docker save --platform linux/arm64 -o /tmp/img.tar <image>
     minikube image load /tmp/img.tar
+
+
+## MLflow server killed for using too much memory (OOMKilled)
+
+**Problem:** MLflow 3.16 starts a background job system (extra Python worker
+processes for GenAI evaluation and scheduled jobs) by default. With a 1.5 GB
+memory limit, the pod was repeatedly OOMKilled.
+
+**Fix:** Disable the unused feature with
+`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false` and raise the limit to 2 GiB.
+
+**Production lesson:** Set resource limits from measured usage, and explicitly
+disable server features you don't use. It saves memory and shrinks the attack
+surface.

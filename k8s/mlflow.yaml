@@ -1,0 +1,108 @@
+# MLflow tracking server + model registry.
+# Metadata (runs, params, metrics, registry) -> SQLite on a persistent volume.
+# Artifacts (models, plots) -> MinIO bucket "mlflow-artifacts", proxied by the server,
+# so training pods never need storage credentials.
+#
+# Notes:
+# - The PersistentVolumeClaim keeps the MLflow database across pod restarts.
+# - The init container makes sure the artifact bucket exists before MLflow starts
+#   (the dev-stack MinIO loses buckets on restart until step 3 fixes that).
+# - --allowed-hosts: MLflow rejects requests addressed to unknown hostnames
+#   (DNS-rebinding protection). We allow the in-cluster service name and
+#   localhost port-forwards.
+# - strategy Recreate: never run two servers on the same SQLite file.
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-db
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  labels:
+    app: mlflow
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      initContainers:
+        - name: create-artifact-bucket
+          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: minio-secret
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              mc alias set local "$AWS_ENDPOINT_URL_S3" "$AWS_ACCESS_KEY_ID" "$AWS_SECRET_ACCESS_KEY" &&
+              mc mb --ignore-existing local/mlflow-artifacts
+      containers:
+        - name: mlflow
+          image: mlflow-server:3.16.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: minio-secret
+          env:
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: http://minio.default.svc.cluster.local:9000
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: MLFLOW_SERVER_ENABLE_JOB_EXECUTION
+              value: "false"
+          command: ["mlflow", "server"]
+          args:
+            - --host=0.0.0.0
+            - --port=5000
+            - --workers=1
+            - --backend-store-uri=sqlite:////mlflow/mlflow.db
+            - --artifacts-destination=s3://mlflow-artifacts
+            - --allowed-hosts=mlflow,mlflow:5000,mlflow.default.svc.cluster.local,mlflow.default.svc.cluster.local:5000,localhost,localhost:*,127.0.0.1,127.0.0.1:*
+          volumeMounts:
+            - name: db
+              mountPath: /mlflow
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: db
+          persistentVolumeClaim:
+            claimName: mlflow-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+spec:
+  selector:
+    app: mlflow
+  ports:
+    - port: 5000
+      targetPort: 5000
