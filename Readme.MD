@@ -17,7 +17,7 @@ Argo Workflows, and MLflow.
 - [x] Step 4: Immutable dataset versions
 - [x] Step 5: Training flow with lineage
 - [x] Step 6: Evaluation and release gate
-- [ ] Step 7: Edge-style serving with rollback
+- [x] Step 7: Edge-style serving with rollback
 - [ ] Step 8: Audit command
 - [ ] Step 9: Automated retraining and CI
 EOF
