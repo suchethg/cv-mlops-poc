@@ -1,7 +1,7 @@
 cat > README.md <<'EOF'
 # Surgical Segmentation MLOps — Proof of Concept
 
-A laptop-scale version of a regulated ML platform for surgical image
+A small-scale version of a regulated ML platform for surgical image
 segmentation: ingest, de-identify, version, train, evaluate, approve, deploy,
 with full lineage from any deployed model back to its exact input files,
 code, and container image.
