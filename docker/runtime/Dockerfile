@@ -6,4 +6,5 @@ FROM python:3.11-slim
 RUN pip install --no-cache-dir \
       mlflow-skinny==3.16.1 \
       "boto3>=1.34" \
-      requests
+      requests \
+      "pillow>=10.0"
