@@ -14,7 +14,7 @@ import os
 import requests
 from PIL import Image
 
-PORTS = {"boston": 8081, "denver": 8082}
+PORTS = {"boston": 8081, "denver": 8092}
 
 
 def main():

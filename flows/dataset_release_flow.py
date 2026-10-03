@@ -11,7 +11,7 @@
 Run (Mac, tunnels open, credentials loaded):
   python flows/dataset_release_flow.py run --max-workers 4
 """
-from metaflow import FlowSpec, Parameter, current, kubernetes, schedule, step
+from metaflow import FlowSpec, Parameter, current, kubernetes, retry, schedule, step
 
 RUNTIME_IMAGE = "surgseg-runtime:0.2"
 
@@ -51,6 +51,7 @@ class DatasetReleaseFlow(FlowSpec):
         print(f"golden test cases ({'new' if created else 'existing'}): {self.test_cases}")
         self.next(self.freeze, foreach="case_work")
 
+    @retry(times=2, minutes_between_retries=1)
     @kubernetes(image=RUNTIME_IMAGE, cpu=0.5, memory=1024, secrets=["datalake-creds"])
     @step
     def freeze(self):

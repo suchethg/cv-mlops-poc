@@ -9,7 +9,7 @@ Finishes with an ingest report saved to the data lake.
 Run (Mac, tunnels open, credentials loaded):
   python flows/ingest_flow.py run --max-workers 4
 """
-from metaflow import FlowSpec, current, kubernetes, schedule, step
+from metaflow import FlowSpec, current, kubernetes, retry, schedule, step
 
 RUNTIME_IMAGE = "surgseg-runtime:0.2"
 NOTHING_TO_DO = "__none__"
@@ -29,6 +29,7 @@ class IngestFlow(FlowSpec):
         self.work = self.pending or [NOTHING_TO_DO]
         self.next(self.process, foreach="work")
 
+    @retry(times=2, minutes_between_retries=1)
     @kubernetes(image=RUNTIME_IMAGE, cpu=0.5, memory=1024, secrets=["datalake-creds"])
     @step
     def process(self):

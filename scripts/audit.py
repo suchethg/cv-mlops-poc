@@ -30,7 +30,7 @@ from surgseg.datasets import dataset_id as compute_dataset_id  # noqa: E402
 from surgseg.lake import exists, lake_client, read_json  # noqa: E402
 
 NAME = "cholecseg-segmenter"
-SITE_PORTS = {"boston": 8081, "denver": 8082}
+SITE_PORTS = {"boston": 8081, "denver": 8092}
 LOCKED = ("GOVERNANCE", "COMPLIANCE")
 
 
