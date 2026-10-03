@@ -12,7 +12,7 @@ Argo Workflows, and MLflow.
 ## Status
 
 - [x] Step 1: Local platform (Minikube, MinIO, Metaflow, Argo)
-- [ ] Step 2: MLflow tracking server in Kubernetes
+- [x] Step 2: MLflow tracking server in Kubernetes
 - [ ] Step 3: Ingest and quarantine flow
 - [ ] Step 4: Immutable dataset versions
 - [ ] Step 5: Training flow with lineage
