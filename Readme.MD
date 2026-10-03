@@ -1,4 +1,4 @@
-cat > README.md <<'EOF'
+
 # Surgical Segmentation MLOps — Proof of Concept
 
 A small-scale version of a regulated ML platform for surgical image
@@ -15,7 +15,7 @@ Argo Workflows, and MLflow.
 - [x] Step 2: MLflow tracking server in Kubernetes
 - [x] Step 3: Ingest and quarantine flow
 - [x] Step 4: Immutable dataset versions
-- [ ] Step 5: Training flow with lineage
+- [x] Step 5: Training flow with lineage
 - [ ] Step 6: Evaluation and release gate
 - [ ] Step 7: Edge-style serving with rollback
 - [ ] Step 8: Audit command
