@@ -1,0 +1,19 @@
+# Runs the unit tests on every push and pull request.
+# These cover the rules that must never silently break: de-identification,
+# checksums and dataset IDs, patient-leakage checks, and the release policy.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements-test.txt
+      - run: pytest -v

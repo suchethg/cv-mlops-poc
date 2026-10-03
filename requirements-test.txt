@@ -1,0 +1,6 @@
+# Unit tests only: no cluster, no GPU, no PyTorch needed.
+pytest>=8.0
+moto[s3]>=5.0
+boto3>=1.34
+pillow>=10.0
+numpy
