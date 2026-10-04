@@ -8,7 +8,16 @@
 #
 # It prints a title and a one-line explanation before each step, pauses so
 # the narration has room to breathe, then runs the real commands against the
-# real cluster. Nothing here is simulated. It does not commit, push, or touch
+# real cluster. After each step it shows the data that step produced (via
+# scripts/show_data.py) and opens preview images in Preview, so record the
+# whole screen, not just the terminal. PAUSE=<seconds> sets the reading time
+# after each view (default 5).
+#
+# After each step it also opens the same data in Google Chrome: data lake
+# console folders, the uploaded and curated files themselves, the Metaflow
+# runs and the MLflow pages, then brings the terminal back. BROWSE_PAUSE sets
+# seconds per page (default 7); BROWSER_VIEWS=0 turns this off. Nothing here
+# is simulated. It does not commit, push, or touch
 # any file other than k8s/edge-sites.yaml (the canary rollout in step 7).
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -32,6 +41,33 @@ title() {
   sleep 3
 }
 
+# Gives the viewer time to read what just printed. PAUSE=0 to skip.
+pause() { sleep "${PAUSE:-5}"; }
+
+# The app this script runs in, so browse() can bring it back to the front.
+case "${TERM_PROGRAM:-}" in
+  iTerm.app) TERM_APP="iTerm" ;;
+  vscode)    TERM_APP="Visual Studio Code" ;;
+  *)         TERM_APP="Terminal" ;;
+esac
+
+# browse <stage> [args]  — opens each page from `show_data.py links <stage>`
+# in Chrome for BROWSE_PAUSE seconds, then returns to the terminal.
+browse() {
+  [ "${BROWSER_VIEWS:-1}" = 1 ] && [ "$(uname)" = "Darwin" ] || return 0
+  local links="$LOGDIR/links-$1.txt"
+  if ! python scripts/show_data.py links "$@" >"$links"; then
+    warn "couldn't build browser links for $1; skipping"
+    return 0
+  fi
+  while IFS='|' read -r label url; do
+    note "browser: $label"
+    open -a "Google Chrome" "$url"
+    sleep "${BROWSE_PAUSE:-7}"
+  done <"$links"
+  osascript -e "tell application \"$TERM_APP\" to activate" >/dev/null 2>&1
+}
+
 note() { echo "${CYAN}-- $* --${RESET}"; }
 ok()   { echo "${GREEN}$*${RESET}"; }
 warn() { echo "${YELLOW}$*${RESET}"; }
@@ -42,11 +78,13 @@ die() { err "$*"; exit 1; }
 # Strips ANSI colors, Metaflow's "[run/step/task (pid N)] " line prefixes and
 # timestamp prefixes, and drops repetitive Metaflow boilerplate lines so the
 # real flow output (prints, metrics, results) reads cleanly on camera.
+# Every stage flushes per line (sed -l, grep --line-buffered) so long steps
+# like training show progress live instead of all at once at the end.
 clean_metaflow() {
-  sed -E 's/\x1b\[[0-9;]*m//g' \
-    | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[[:space:]]+//' \
-    | sed -E 's/^\[[^]]*\][[:space:]]*//' \
-    | grep -Ev '^(Metaflow [0-9]|Validating your flow|The graph looks good|Workflow starting|Task is starting|Task finished successfully|Bootstrapping|Logging into|Pulling container image|Returning the task)'
+  sed -l -E 's/\x1b\[[0-9;]*m//g' \
+    | sed -l -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[[:space:]]+//' \
+    | sed -l -E 's/^\[[^]]*\][[:space:]]*//' \
+    | grep --line-buffered -Ev '^(Metaflow [0-9]|Validating your flow|The graph looks good|Workflow starting|Task is starting|Task finished successfully|Bootstrapping|Logging into|Pulling container image|Returning the task)'
 }
 
 LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/record_demo.XXXXXX")
@@ -91,10 +129,23 @@ ok "preflight OK: tab configured, cluster reachable, tunnels up"
 title "STEP 1 · UPLOAD: new device clips arrive" \
       "Two surgical devices upload clips to quarantine; one upload is corrupted in transit."
 
+note "the test data: real CholecSeg8k surgical frames and their segmentation masks"
+python scripts/show_data.py source --video video43 --clips 3
+pause
+browse source --match video43
+
+note "device 1 uploads 3 clips of video43 (clean)"
 python scripts/simulate_device_upload.py --video video43 --clips 3 \
   || die "upload of video43 failed"
+note "device 2 uploads 1 clip of video09, with one frame truncated in transit"
 python scripts/simulate_device_upload.py --video video09 --clips 1 --inject corrupt \
   || die "corrupt upload of video09 failed"
+pause
+
+note "what landed in quarantine: frames, masks, and a manifest per upload"
+python scripts/show_data.py quarantine --upload video43
+pause
+browse upload --match video43
 
 # ======================================================================
 title "STEP 2 · INGEST: checks, PHI redaction, rejections" \
@@ -104,8 +155,20 @@ run_step "$LOGDIR/ingest.log" python flows/ingest_flow.py run --max-workers 1
 ingest_rc=$?
 [ $ingest_rc -eq 0 ] || die "ingest flow failed (exit $ingest_rc) — see $LOGDIR/ingest.log"
 
-note "the newest rejection record (no patient data in it)"
-bash scripts/demo.sh 1b
+pause
+
+note "rejected uploads and why (no patient data in the record)"
+python scripts/show_data.py rejected
+pause
+
+note "accepted uploads, now de-identified in the curated bucket"
+python scripts/show_data.py curated
+pause
+
+note "the same frame before and after redaction"
+python scripts/show_data.py redaction
+pause
+browse ingest
 
 # ======================================================================
 title "STEP 3 · DATASET RELEASE: freeze into an immutable, content-addressed dataset" \
@@ -118,6 +181,12 @@ release_rc=$?
 dataset_id=$(grep -oE 'Dataset [A-Za-z0-9_.-]+ / ds-[0-9a-f]+' "$LOGDIR/release.log" | tail -1 | awk '{print $NF}')
 [ -n "$dataset_id" ] || die "couldn't find a dataset ID in the release output — see $LOGDIR/release.log"
 ok ">>> new dataset: $dataset_id <<<"
+pause
+
+note "what was frozen: the dataset card, the manifest, and a locked file"
+python scripts/show_data.py dataset
+pause
+browse dataset
 
 # ======================================================================
 title "STEP 4 · TRAIN: train a model on the frozen dataset" \
@@ -130,6 +199,8 @@ train_rc=$?
 mlflow_run_id=$(grep -oE '/runs/[0-9a-f]+' "$LOGDIR/train.log" | tail -1 | cut -d/ -f3)
 [ -n "$mlflow_run_id" ] || die "couldn't find the MLflow run ID in the training output — see $LOGDIR/train.log"
 ok ">>> MLflow training run: $mlflow_run_id <<<"
+pause
+browse train --run-id "$mlflow_run_id"
 
 # ======================================================================
 title "STEP 5 · RELEASE GATE: policy, lineage, ONNX parity, latency" \
@@ -148,6 +219,8 @@ if [ "$decision" != "PASSED" ]; then
   # ==================================================================
 else
   ok ">>> gate PASSED: registered candidate version $version <<<"
+  pause
+  browse gate --version "$version"
 
   # ==================================================================
   title "STEP 6 · APPROVAL: separation of duties" \
@@ -172,6 +245,8 @@ else
        --reason "Passed release gate; approved for Boston canary rollout"; then
     approved=1
     ok ">>> version $version APPROVED by qa.reviewer <<<"
+    pause
+    browse approve
   else
     warn "approval was refused — skipping the canary rollout"
   fi
@@ -226,11 +301,13 @@ PYEOF
     note "Boston (new version) vs. Denver (unchanged)"
     python scripts/edge_predict.py --site boston
     python scripts/edge_predict.py --site denver
+    pause
+    browse canary
   fi
 fi
 
 # ======================================================================
-title "STEP 9 · AUDIT: trace the Boston device back to device uploads" \
+title "STEP 8 · AUDIT: trace the Boston device back to device uploads" \
       "One command verifies every link in the chain, from the running model back to the original clips."
 
 python scripts/audit.py --site boston
@@ -240,6 +317,8 @@ if [ $audit_rc -eq 0 ]; then
 else
   warn "audit reported broken link(s) or warnings — see the report above"
 fi
+pause
+browse audit
 
 echo
 ok "Demo complete."
