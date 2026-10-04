@@ -33,7 +33,7 @@ spec:
           env:
             - {name: SITE_ID, value: site-boston}
             - {name: MODEL_NAME, value: cholecseg-segmenter}
-            - {name: MODEL_VERSION, value: "3"}
+            - {name: MODEL_VERSION, value: "4"}
             - {name: MLFLOW_TRACKING_URI, value: "http://mlflow.default.svc.cluster.local:5000"}
             - {name: ORT_THREADS, value: "2"}
           ports:
